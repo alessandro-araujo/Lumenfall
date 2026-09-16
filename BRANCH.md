@@ -1,5 +1,5 @@
-# Branch master
+# Branch develop
 
-Versao de producao do Lumenfall. Deve conter apenas alteracoes revisadas, testadas e consideradas estaveis.
+Versao integrada e segura do Lumenfall. Reune alteracoes que ja passaram por uma verificacao inicial e serve como base para preparar futuras entregas.
 
-A branch deve ser protegida no repositorio remoto, permitindo alteracoes apenas por merge autorizado pelo proprietario.
+Nem toda alteracao presente em uma release precisa entrar imediatamente nesta branch; a integracao depende da validacao e da estabilidade do conjunto.
