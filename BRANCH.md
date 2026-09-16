@@ -1,5 +1,5 @@
-# Branch develop
+# Branch release
 
-Versao integrada e segura do Lumenfall. Reune alteracoes que ja passaram por uma verificacao inicial e serve como base para preparar futuras entregas.
+Versao de preparacao da proxima entrega do Lumenfall. Recebe implementacoes, correcoes e ajustes para avaliacao, podendo conter bugs e instabilidades.
 
-Nem toda alteracao presente em uma release precisa entrar imediatamente nesta branch; a integracao depende da validacao e da estabilidade do conjunto.
+Cada ciclo pode ser identificado por uma data em tags ou branches temporarias, como `release/2026-09-16`. Quando validado, o resultado pode ser integrado em develop.
