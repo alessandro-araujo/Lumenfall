@@ -1,0 +1,11 @@
+# Example: copy to .codex/config.toml and adjust the absolute project path.
+# Requires Python 3.12+ on PATH. Set command to its full path if necessary.
+[mcp_servers.lumenfall_godot]
+command = 'python'
+args = ['C:\path\to\Lumenfall\tools\godot_mcp.py']
+startup_timeout_sec = 15
+tool_timeout_sec = 60
+
+# Optional if the engine is not installed under tools/godot/:
+# [mcp_servers.lumenfall_godot.env]
+# GODOT_BIN = 'C:\path\to\Godot_v4.7.2-stable_win64.exe'
