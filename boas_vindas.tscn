@@ -1,0 +1,32 @@
+[gd_scene format=3 uid="uid://ckbko6kqmer73"]
+
+[ext_resource type="Script" uid="uid://cb8jqdhojy4bd" path="res://boas_vindas.gd" id="1_wubhc"]
+
+[node name="Control" type="Control" unique_id=1691168021]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_wubhc")
+
+[node name="Label" type="Label" parent="." unique_id=568090888]
+layout_mode = 0
+offset_left = 453.0
+offset_top = 66.0
+offset_right = 737.0
+offset_bottom = 147.0
+text = "Bem-vindo ao Lumenfall!"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Button" type="Button" parent="." unique_id=1843298614]
+layout_mode = 0
+offset_left = 437.0
+offset_top = 92.0
+offset_right = 483.0
+offset_bottom = 123.0
+text = "Start"
+
+[connection signal="pressed" from="Button" to="." method="_on_button_pressed"]
