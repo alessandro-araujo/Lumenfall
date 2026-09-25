@@ -7,3 +7,11 @@
 # Operating system files
 .DS_Store
 Thumbs.db
+
+# Local engine and generated verification output
+tools/godot/
+artifacts/
+__pycache__/
+
+# Workstation-specific MCP configuration
+.codex/config.toml
