@@ -10,6 +10,7 @@ Abra `project.godot` no Godot e pressione **F5**, ou abra `Jogar.cmd` no Windows
 - **2:** dois jogadores no mesmo teclado.
 - **Esc:** pausar/continuar. Na pausa, **Q** volta ao menu.
 - **R:** reiniciar a partida. **F1:** ligar/desligar os efeitos sonoros.
+- **Esc, depois T:** entrar/sair do modo treino. O jogador 2 fica parado, sem atacar ou defender, inclusive no modo local. O tempo é ilimitado; após nocaute o treino reinicia com vida cheia. **R** reinicia mantendo o treino. Entrar ou sair reinicia a partida.
 
 | Ação | Jogador 1 — Ren | Jogador 2 — Akane |
 | --- | --- | --- |

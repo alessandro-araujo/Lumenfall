@@ -9,8 +9,61 @@ cabelo preto volumoso e katana; oito poses em pixel art com transparência: guar
 passo, preparação, ataque, defesa, salto, agachamento e dano; manter identidade e proporções,
 com espadas completas e margem entre poses. Atlas de 1536 x 1024.
 
-Implementação: poses discretas sincronizadas com os tempos existentes, respiração sutil,
-espelhamento e reação visual a dano. As regras de combate permanecem em fighter.gd.
+Implementação: poses de combate sincronizadas com os tempos existentes, caminhada
+articulada sobre a arte original, respiração sutil, espelhamento e reação visual a dano.
+As regras de combate permanecem em fighter.gd.
+
+## Caminhada ativa — malha 2D sobre o sprite aprovado
+
+### Estado parado aprovado
+
+`scripts/ren_idle_rig.gd` integra o movimento aprovado na prévia 04
+(`artifacts/ren-idle-v4-preview/ren-idle-120-quadros.gif`). O ciclo de 3.6 segundos
+reproduz a mesma função usada nos 120 quadros do GIF, avaliada continuamente no jogo:
+respiração mais marcada, inclinação do tronco, oscilação do punho/katana e movimento
+secundário do cabelo/faixas. A arte original é usada na escala habitual 0.58; a
+prévia era ampliada a 0.92. Os pés permanecem apoiados, sem escalar o corpo inteiro.
+
+A entrada/saída da caminhada mistura as deformações. Ataque, defesa, salto e dano
+mantêm prioridade; o retorno ao repouso suaviza em 0.16 s. Pausa e hitstop congelam
+o ciclo. Testes dedicados: `tests/ren_idle_test.gd`; captura com `-- --capture-idle`.
+As regras e os sprites originais do combate permanecem intactos.
+
+O usuário autorizou escolher a técnica para melhorar a fluidez, preservando o corpo.
+A caminhada usa **somente a região idle de poses.png**, na mesma escala 0.58 da pose
+parada. Não utiliza os atlas experimentais de caminhada, não altera a imagem original
+e não exige Blender. `scripts/ren_walk_rig.gd` define 12 poses de uma malha 2D e
+interpola os vértices continuamente entre elas. É deformação 2D da arte existente,
+não uma nova sequência desenhada quadro a quadro nem um personagem 3D.
+
+Cabeça, braços, mãos, espada e tronco mantêm as mesmas coordenadas horizontais e as
+mesmas distâncias internas. A parte superior só recebe uma pequena translação vertical.
+Abaixo da faixa, os pesos da malha articulam pernas e pés; o balanço dos pés tem uma
+fase baixa de recuperação e uma fase de apoio. A fonte e a escala não mudam ao andar.
+
+O ciclo acompanha o deslocamento efetivo após colisões, com 128 pixels por ciclo;
+o recuo percorre a sequência ao contrário. Entrada em 0.10 s e saída em 0.12 s evitam
+trocas bruscas ao começar/parar. Pausa e hitstop congelam o estado. Ataques, dano,
+agachamento e salto assumem prioridade imediata. Reiniciar o round limpa a animação.
+Ataques, alcance, dano, velocidade e demais regras de `fighter.gd` não foram alterados.
+
+Limite artístico: a técnica preserva a silhueta original e melhora a continuidade,
+mas continua sendo um passo curto de combate. Não redesenha volumes ocultos nem
+substitui uma animação completa de corrida/ataque feita quadro a quadro.
+
+Para revisão: `Testar-Ren.cmd` abre uma comparação ampliada entre original e animação.
+Espaço pausa; setas percorrem as 12 poses; Esc sai. O ciclo automático mostra avanço,
+recuo e parada. `Jogar.cmd` abre a arena com a nova caminhada integrada.
+
+Validação: `tests/ren_animation_test.gd` verifica anatomia rígida da parte superior,
+solas, ausência de inversão de triângulos em 120 amostras, fechamento do ciclo,
+atualizações a 30/60/144 Hz, recuo, espelhamento, interrupções, pausa, hitstop e reset.
+`tests/ren_arena_render.gd` captura avanço/recuo/parada na arena. Testes existentes
+de combate e rounds permanecem em `tests/combat_test.gd`.
+Vídeo renderizado pelo Godot: `artifacts/ren-rig-demo.avi` (7.5 s, 60 fps).
+Backup dos scripts anteriores à integração: `artifacts/ren-rig-backup/`.
+
+Referência técnica: [ArrayMesh na documentação do Godot](https://docs.godotengine.org/en/stable/classes/class_arraymesh.html).
 
 ## Caminhada — 24/09/2026
 
