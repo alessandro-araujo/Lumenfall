@@ -89,6 +89,45 @@ func _arena_tests() -> void:
 	arena.paused = true
 	arena._physics_process(1.0)
 	check(arena.remaining == 60.0, "Pause freezes clock")
+	var toggle := InputEventKey.new()
+	toggle.keycode = KEY_T
+	toggle.pressed = true
+	arena._unhandled_key_input(toggle)
+	check(arena.training_mode and not arena.paused, "Pause menu T enters training")
+	arena.state = "fight"
+	var target: Vector2 = arena.p2.pos
+	for i in range(120):
+		arena._physics_process(1.0 / 60.0)
+	check(arena.p2.pos == target and arena.p2.attack.is_empty(), "Training CPU stays idle")
+	check(arena.remaining == 60.0, "Training has no time limit")
+	arena.start_match(true, true)
+	arena.state = "fight"
+	Input.action_press("p2_left")
+	Input.action_press("p2_heavy")
+	arena._physics_process(0.016)
+	Input.action_release("p2_left")
+	Input.action_release("p2_heavy")
+	check(arena.p2.pos == target and arena.p2.attack.is_empty(), "Training ignores player two input")
+	arena._resolve_hit(arena.p1, arena.p2, "heavy")
+	check(arena.p2.health == 76, "Training target takes damage")
+	arena.hitstop = 0
+	arena._physics_process(0.016)
+	check(arena.p2.pos == target, "Training target remains fixed after impact")
+	arena.p1.pos.x = target.x - 40
+	arena._physics_process(0.016)
+	check(arena.p2.pos == target and absf(arena.p2.pos.x - arena.p1.pos.x) >= 76, "Body collision keeps dummy fixed")
+	arena.p2.health = 0
+	arena._physics_process(0.016)
+	arena._physics_process(1.3)
+	check(arena.p2.health == 100 and arena.p1.wins == 0 and arena.round_no == 1, "Training restores target after KO without score")
+	var restart := InputEventKey.new()
+	restart.keycode = KEY_R
+	restart.pressed = true
+	arena._unhandled_key_input(restart)
+	check(arena.training_mode, "Restart preserves training mode")
+	arena.paused = true
+	arena._unhandled_key_input(toggle)
+	check(not arena.training_mode and arena.local_mode, "Leaving training restores previous match type")
 	print("ARENA TESTS: ", "PASS" if failures == 0 else "FAIL", " (", failures, " total failures)")
 	arena.free()
 	quit(0 if failures == 0 else 1)
