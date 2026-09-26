@@ -3,7 +3,9 @@ extends Node2D
 const Fighter = preload("res://scripts/fighter.gd")
 const RenVisual = preload("res://scripts/ren_visual.gd")
 const BloodEffect = preload("res://scripts/blood_effect.gd")
-const STAGE_BACKGROUND = preload("res://assets/arenas/templo-ao-luar/background.png")
+const AnimatedStage = preload("res://scripts/animated_stage.gd")
+const RainEffect = preload("res://scripts/rain_effect.gd")
+const WetClothing = preload("res://scripts/wet_clothing.gd")
 const INK := Color("101c2c")
 const PAPER := Color("efe4c9")
 const GOLD := Color("d6af68")
@@ -11,11 +13,13 @@ const RED := Color("db6658")
 const TEAL := Color("69c6bc")
 var p1 = Fighter.new()
 var p2 = Fighter.new()
+var ren_visual := RenVisual.new()
 var font: Font = ThemeDB.fallback_font
 var clock := 0.0
 var remaining := 60.0
 var state := "menu"
 var local_mode := false
+var training_mode := false
 var round_no := 1
 var phase_time := 0.0
 var hitstop := 0.0
@@ -29,12 +33,21 @@ var sound_bank: Dictionary = {}
 var sound_players: Array[AudioStreamPlayer] = []
 var sound_index := 0
 var preview_frames := 0
+var animated_stage := AnimatedStage.new()
+var rain := RainEffect.new()
+var wet_clothing := WetClothing.new()
+var weather_rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
+	weather_rng.randomize()
+	_roll_weather()
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	add_child(animated_stage)
+	ren_visual.prepare_clothing()
 	_setup_inputs()
 	p1.reset(390.0, 1.0)
 	p2.reset(890.0, -1.0)
+	ren_visual.reset(p1)
 	_make_audio()
 	if "--preview" in OS.get_cmdline_user_args():
 		start_match(false)
@@ -80,15 +93,26 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		elif event.keycode == KEY_2:
 			start_match(true)
 	elif event.keycode == KEY_R:
-		start_match(local_mode)
+		start_match(local_mode, training_mode)
+	elif paused and event.keycode == KEY_T:
+		start_match(local_mode, not training_mode)
 	elif paused and event.keycode == KEY_Q:
 		state = "menu"
 		paused = false
 	elif state == "match_end" and event.keycode == KEY_ENTER:
 		start_match(local_mode)
 
-func start_match(two_players: bool) -> void:
+func _roll_weather() -> void:
+	# Independent RNG: weather never changes CPU or combat randomness.
+	rain = RainEffect.new()
+	rain.enabled = weather_rng.randf() < 0.2
+	wet_clothing = WetClothing.new()
+	ren_visual.wetness = 0.0
+
+func start_match(two_players: bool, training: bool = false) -> void:
+	_roll_weather()
 	local_mode = two_players
+	training_mode = training
 	p1.wins = 0
 	p2.wins = 0
 	round_no = 1
@@ -98,6 +122,7 @@ func start_match(two_players: bool) -> void:
 func start_round() -> void:
 	p1.reset(390.0, 1.0)
 	p2.reset(890.0, -1.0)
+	ren_visual.reset(p1)
 	remaining = 60.0
 	state = "intro"
 	phase_time = 2.0
@@ -108,8 +133,13 @@ func start_round() -> void:
 	_play_sound("gong")
 
 func _process(dt: float) -> void:
+	rain.update(dt, [p1, p2], paused)
+	wet_clothing.update(dt, rain.body_contacts, paused)
+	ren_visual.wetness = wet_clothing.levels[0]
 	if not paused:
 		clock += dt
+		if hitstop <= 0.0:
+			ren_visual.advance_idle(p1, dt)
 	queue_redraw()
 	if "--preview" in OS.get_cmdline_user_args():
 		preview_frames += 1
@@ -140,7 +170,9 @@ func _physics_process(dt: float) -> void:
 	if state == "round_end":
 		phase_time -= dt
 		if phase_time <= 0.0:
-			if p1.wins >= 2 or p2.wins >= 2:
+			if training_mode:
+				start_round()
+			elif p1.wins >= 2 or p2.wins >= 2:
 				state = "match_end"
 			else:
 				round_no += 1
@@ -148,16 +180,22 @@ func _physics_process(dt: float) -> void:
 		return
 	if state != "fight":
 		return
-	remaining = maxf(0.0, remaining - dt)
+	if not training_mode:
+		remaining = maxf(0.0, remaining - dt)
 	p1.tick(dt, _human("p1"), p2)
-	p2.tick(dt, _human("p2") if local_mode else _cpu(dt), p1)
+	var target_position: Vector2 = p2.pos
+	p2.tick(dt, {} if training_mode else (_human("p2") if local_mode else _cpu(dt)), p1)
+	if training_mode:
+		p2.pos = target_position
+		p2.velocity = Vector2.ZERO
 	# Body collision applies only at similar heights, allowing jumps over the rival.
 	var separation: float = p2.pos.x - p1.pos.x
 	if absf(separation) < 76.0 and absf(p1.pos.y - p2.pos.y) < 110.0:
 		var push: float = (76.0 - absf(separation)) * 0.5
 		var direction := 1.0 if separation >= 0.0 else -1.0
-		p1.pos.x = clampf(p1.pos.x - push * direction, 65.0, 1215.0)
-		p2.pos.x = clampf(p2.pos.x + push * direction, 65.0, 1215.0)
+		p1.pos.x = clampf(p1.pos.x - push * direction * (2.0 if training_mode else 1.0), 65.0, 1215.0)
+		if not training_mode:
+			p2.pos.x = clampf(p2.pos.x + push * direction, 65.0, 1215.0)
 	# Snapshot both attacks before applying damage so simultaneous strikes can trade.
 	var hit1: bool = p1.can_hit(p2)
 	var hit2: bool = p2.can_hit(p1)
@@ -169,6 +207,7 @@ func _physics_process(dt: float) -> void:
 		_resolve_hit(p2, p1, kind2)
 	if p1.health <= 0.0 or p2.health <= 0.0 or remaining <= 0.0:
 		_finish_round()
+	ren_visual.update(p1, dt)
 
 func _human(prefix: String) -> Dictionary:
 	return {
@@ -226,6 +265,10 @@ func _resolve_hit(attacker, defender, kind: String) -> void:
 func _finish_round() -> void:
 	state = "round_end"
 	phase_time = 2.5
+	if training_mode:
+		banner = "REINICIANDO TREINO"
+		phase_time = 1.2
+		return
 	if is_equal_approx(p1.health, p2.health):
 		banner = "EMPATE"
 	else:
@@ -238,9 +281,11 @@ func _draw() -> void:
 	var offset := Vector2(sin(clock * 173.0), cos(clock * 137.0)) * shake
 	draw_set_transform(offset)
 	_draw_stage()
+	rain.draw(self, false)
 	_draw_fighter(p1, false)
 	_draw_fighter(p2, true)
 	draw_set_transform(offset)
+	rain.draw(self, true)
 	blood.draw(self)
 	for spark in particles:
 		draw_line(spark.pos, spark.pos - spark.vel * 0.035, spark.color, 2.5, true)
@@ -259,6 +304,8 @@ func _draw() -> void:
 		draw_rect(Rect2(0, 0, 1280, 720), Color(0.025, 0.04, 0.065, 0.88))
 		_center("PAUSA", 308, 64, PAPER)
 		_center("ESC  CONTINUAR     R  REINICIAR     Q  MENU", 366, 18, GOLD)
+		_center("T  SAIR DO MODO TREINO" if training_mode else "T  MODO TREINO", 413, 22, PAPER)
+		_center("JOGADOR 2 PARADO  •  SEM LIMITE DE TEMPO", 446, 14, GOLD)
 
 func _poly(points: Array, color: Color) -> void:
 	draw_colored_polygon(PackedVector2Array(points), color)
@@ -271,21 +318,22 @@ func _center(text: String, y: float, size: int, color: Color) -> void:
 	_text(text, Vector2((1280.0 - width) * 0.5, y), size, color)
 
 func _draw_stage() -> void:
-	# Approved single-image stage; fighter footing and combat bounds stay unchanged.
-	draw_texture_rect(STAGE_BACKGROUND, Rect2(0, 0, 1280, 720), false)
+	animated_stage.set_time(clock)
+	animated_stage.position = Vector2(sin(clock * 173.0), cos(clock * 137.0)) * shake
 	draw_rect(Rect2(0, 658, 1280, 62), Color("0e1b29"))
 	draw_line(Vector2(40, 658), Vector2(1240, 658), Color("4b5152"), 1)
 
 func _draw_fighter(f, rival: bool) -> void:
-	var color := RED if rival else TEAL
-	var dark := Color("613c48") if rival else Color("23505b")
+	var moisture: float = wet_clothing.levels[1 if rival else 0]
+	var color := WetClothing.tint(RED if rival else TEAL, moisture)
+	var dark := WetClothing.tint(Color("613c48") if rival else Color("23505b"), moisture)
 	var bob := sin(clock * 3.5) * 2.0
 	var crouch := 34.0 if f.crouching else 0.0
 	var stride := sin(clock * 14.0) * 15.0 if f.walking else 0.0
 	draw_set_transform(Vector2(f.pos.x, 565), 0, Vector2(1.0, 0.22))
 	draw_circle(Vector2.ZERO, 52, Color(0.02, 0.04, 0.07, 0.40))
 	if not rival:
-		RenVisual.draw(self, f, clock)
+		ren_visual.draw(self, f, clock)
 		return
 	draw_set_transform(f.pos + Vector2(0, bob + crouch), 0.0, Vector2(f.facing, 1.0))
 	if f.health <= 0.0:
@@ -298,7 +346,7 @@ func _draw_fighter(f, rival: bool) -> void:
 	draw_line(Vector2(-22, -79), Vector2(-88, -36), Color("151c2a"), 9, true)
 	_poly([Vector2(-17, -108), Vector2(-58, -108 + sin(clock * 5) * 5), Vector2(-93, -84 + sin(clock * 4) * 8), Vector2(-54, -97), Vector2(-14, -92)], color)
 	# Wide hakama trousers and sandals.
-	_poly([Vector2(-25, -82), Vector2(25, -82), Vector2(43 + stride, -13 - crouch), Vector2(12 + stride, -8 - crouch), Vector2(-4, -49), Vector2(-23 - stride, -6 - crouch), Vector2(-48 - stride, -13 - crouch)], INK)
+	_poly([Vector2(-25, -82), Vector2(25, -82), Vector2(43 + stride, -13 - crouch), Vector2(12 + stride, -8 - crouch), Vector2(-4, -49), Vector2(-23 - stride, -6 - crouch), Vector2(-48 - stride, -13 - crouch)], WetClothing.tint(INK, moisture))
 	draw_line(Vector2(-17, -64), Vector2(-29 - stride, -18 - crouch), dark, 5)
 	draw_line(Vector2(14, -65), Vector2(27 + stride, -19 - crouch), dark, 6)
 	draw_line(Vector2(-43 - stride, -5 - crouch), Vector2(-17 - stride, -5 - crouch), Color("b3a690"), 9)
@@ -306,7 +354,7 @@ func _draw_fighter(f, rival: bool) -> void:
 	# Layered jacket, collar and obi.
 	_poly([Vector2(-27, -145), Vector2(10, -152), Vector2(34, -126), Vector2(24, -84), Vector2(-31, -84), Vector2(-40, -121)], color)
 	_poly([Vector2(-19, -146), Vector2(3, -111), Vector2(16, -146), Vector2(24, -138), Vector2(2, -94), Vector2(-31, -141)], dark)
-	draw_line(Vector2(-25, -89), Vector2(26, -89), GOLD, 10)
+	draw_line(Vector2(-25, -89), Vector2(26, -89), WetClothing.tint(GOLD, moisture), 10)
 	# Neck, face, hair, headband and tied hair.
 	draw_rect(Rect2(-8, -163, 17, 22), Color("c78f71"))
 	_poly([Vector2(-17, -185), Vector2(13, -187), Vector2(24, -170), Vector2(16, -151), Vector2(-8, -154), Vector2(-21, -170)], Color("e2b58e"))
@@ -346,7 +394,7 @@ func _draw_fighter(f, rival: bool) -> void:
 func _draw_hud() -> void:
 	draw_rect(Rect2(0, 0, 1280, 128), Color(0.035, 0.065, 0.1, 0.95))
 	_text("L U M E N F A L L", Vector2(42, 29), 15, GOLD)
-	_text("TEMPLO AO LUAR  /  " + ("DUELO LOCAL" if local_mode else "CONTRA CPU"), Vector2(900, 29), 13, Color("9daeb4"))
+	_text("TEMPLO AO LUAR  /  " + ("TREINO" if training_mode else ("DUELO LOCAL" if local_mode else "CONTRA CPU")), Vector2(900, 29), 13, Color("9daeb4"))
 	_text("REN", Vector2(43, 60), 24, PAPER)
 	_text("AKANE", Vector2(1135, 60), 24, PAPER)
 	for index in range(2):
@@ -367,11 +415,13 @@ func _draw_hud() -> void:
 		_text("FÚRIA  /  " + ("PRONTA" if f.rage >= 100.0 else "%02d%%" % int(f.rage)), Vector2(rx, 640), 14, GOLD if f.rage >= 100.0 else PAPER)
 	draw_circle(Vector2(640, 77), 45, INK)
 	draw_arc(Vector2(640, 77), 44, 0, TAU, 64, GOLD, 1.5, true)
-	_center("%02d" % int(ceil(remaining)), 93, 39, PAPER)
-	_center("ROUND %02d" % round_no, 143, 12, GOLD)
+	_center("∞" if training_mode else "%02d" % int(ceil(remaining)), 93, 39, PAPER)
+	_center("TREINO" if training_mode else "ROUND %02d" % round_no, 143, 12, GOLD)
 	_text("A D  MOVER    W  PULAR    S  AGACHAR    J  LEVE    K  FORTE    L  DEFESA    U  FÚRIA", Vector2(42, 685), 14, PAPER)
 	_text("ESC  PAUSA   •   F1  " + ("SOM OFF" if muted else "SOM ON"), Vector2(987, 685), 13, GOLD)
-	if local_mode:
+	if training_mode:
+		_center("ALVO PARADO  •  R  REINICIAR TREINO  •  ESC + T  VOLTAR AO DUELO", 708, 12, Color("9daeb4"))
+	elif local_mode:
 		_center("J2: SETAS  MOVER / PULAR / AGACHAR    B / N / M / H  LEVE / FORTE / DEFESA / FÚRIA", 708, 12, Color("9daeb4"))
 	else:
 		_center("SEGURE PARA TRÁS PARA DEFENDER  •  MELHOR DE TRÊS", 708, 12, Color("9daeb4"))

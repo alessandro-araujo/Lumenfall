@@ -2,6 +2,32 @@ extends RefCounted
 ## Presentation only: every pose follows the existing combat clock.
 const SHEET = preload("res://assets/fighters/ren/poses.png")
 const SCALE := 0.58
+const ClothMaterial = preload("res://scripts/ren_cloth_material.gd")
+var wetness := 0.0
+const WalkRig = preload("res://scripts/ren_walk_rig.gd")
+var walk_rig := WalkRig.new()
+const IdleRig = preload("res://scripts/ren_idle_rig.gd")
+var idle_rig := IdleRig.new()
+var idle_time := 0.0
+var idle_amount := 1.0
+
+func prepare_clothing() -> void:
+	ClothMaterial.overlay(SHEET)
+
+func reset(f) -> void:
+	walk_rig.reset(f.pos.x)
+	idle_time = 0.0
+	idle_amount = 1.0
+
+func advance_idle(f, dt: float) -> void:
+	if WalkRig.eligible(f) and (not f.guarding or f.walking):
+		idle_time = fposmod(idle_time + dt, IdleRig.CYCLE)
+		idle_amount = move_toward(idle_amount, 1.0, dt / 0.16)
+	else:
+		idle_amount = 0.0
+
+func update(f, dt: float) -> void:
+	walk_rig.update(f, dt)
 # Source rectangles and sole pivots measured on the approved pose atlas.
 # Unequal rectangles keep long swords inside their own frame.
 const FRAMES := {
@@ -35,21 +61,18 @@ static func pose(f, time: float) -> String:
 		return "jump"
 	if f.crouching:
 		return "crouch"
-	if f.guarding:
+	if f.guarding and not f.walking:
 		return "guard"
-	if f.walking and int(time * 9.0) % 2 == 1:
-		return "step"
 	return "idle"
 
-static func draw(canvas: Node2D, f, time: float) -> void:
+func draw(canvas: Node2D, f, time: float) -> void:
 	var frame := pose(f, time)
 	var region: Rect2 = FRAMES[frame]
 	var pivot: Vector2 = PIVOTS[frame]
 	var stretch := Vector2.ONE
 	var angle := 0.0
 	var origin: Vector2 = f.pos.round()
-	if frame == "idle":
-		stretch.y += sin(time * 3.5) * 0.006
+	var walking: bool = frame == "idle" and walk_rig.weight > 0.0 and WalkRig.eligible(f)
 	if f.health <= 0.0:
 		angle = -1.48 * f.facing
 		origin += Vector2(-20.0 * f.facing, -7.0)
@@ -58,7 +81,22 @@ static func draw(canvas: Node2D, f, time: float) -> void:
 	canvas.draw_set_transform(origin, angle, Vector2(f.facing, 1.0) * stretch)
 	if f.rage >= 100.0 and f.health > 0.0:
 		canvas.draw_arc(Vector2(0, -95), 117 + sin(time * 8) * 3, -2.8, 0.2, 32, Color(0.85, 0.45, 0.28, 0.5), 3, true)
-	draw_frame(canvas, frame, pivot, Vector2.ZERO, Color(1.35, 1.35, 1.35) if f.flash > 0.0 else Color.WHITE)
+	var tint := Color(1.35, 1.35, 1.35) if f.flash > 0.0 else Color.WHITE
+	if walking and walk_rig.weight >= 1.0:
+		walk_rig.draw(canvas, SHEET, tint)
+	elif frame == "idle" and WalkRig.eligible(f):
+		idle_rig.draw(canvas, SHEET, tint, idle_time, idle_amount, walk_rig)
+	else:
+		draw_frame(canvas, frame, pivot, Vector2.ZERO, tint)
+	if wetness > 0.001:
+		var cloth := ClothMaterial.overlay(SHEET)
+		var wet_tint := Color(tint, wetness)
+		if walking and walk_rig.weight >= 1.0:
+			canvas.draw_mesh(walk_rig.mesh, cloth, Transform2D.IDENTITY, wet_tint)
+		elif frame == "idle" and WalkRig.eligible(f):
+			canvas.draw_mesh(idle_rig.mesh, cloth, Transform2D.IDENTITY, wet_tint)
+		else:
+			draw_frame(canvas, frame, pivot, Vector2.ZERO, wet_tint, cloth)
 	if not f.attack.is_empty():
 		var data: Dictionary = f.ATTACKS[f.attack]
 		if f.attack_time >= data.startup and f.attack_time < data.startup + data.active:
@@ -70,7 +108,7 @@ static func draw(canvas: Node2D, f, time: float) -> void:
 				canvas.draw_arc(hand, radius - 10, -1.4, lerpf(-1.3, 0.6, progress), 24, Color(0.25, 0.8, 0.8, 0.5), 11, true)
 	canvas.draw_set_transform(Vector2.ZERO)
 
-static func draw_frame(canvas: Node2D, frame: String, pivot: Vector2, origin: Vector2, tint := Color.WHITE) -> void:
+static func draw_frame(canvas: Node2D, frame: String, pivot: Vector2, origin: Vector2, tint := Color.WHITE, texture: Texture2D = SHEET) -> void:
 	var regions: Array = [FRAMES[frame]]
 	# These two silhouettes interlock in the source atlas; sample separate strips
 	# to preserve the sword tip and ponytail without drawing the adjacent fighter.
@@ -79,4 +117,4 @@ static func draw_frame(canvas: Node2D, frame: String, pivot: Vector2, origin: Ve
 	elif frame == "hurt":
 		regions = [Rect2(1138, 617, 376, 163), Rect2(1163, 780, 351, 207)]
 	for region: Rect2 in regions:
-		canvas.draw_texture_rect_region(SHEET, Rect2(origin + (region.position - pivot) * SCALE, region.size * SCALE), region, tint)
+		canvas.draw_texture_rect_region(texture, Rect2(origin + (region.position - pivot) * SCALE, region.size * SCALE), region, tint)
